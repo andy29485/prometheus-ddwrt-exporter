@@ -1,0 +1,16 @@
+[Unit]
+Description=DD-WRT router statistics exporter for prometheus to collect
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=nobody
+Group=network
+EnvironmentFile=/etc/prometheus-ddwrt-exporter.env
+ExecStart=/bin/prometheus-ddwrt-exporter https://%i
+Restart=always
+RestartSec=15
+
+[Install]
+WantedBy=multi-user.target
