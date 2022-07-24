@@ -2,7 +2,8 @@ use clap::{crate_authors, crate_name, crate_version, Arg};
 use std::str::FromStr;
 use regex::Regex;
 use itertools::Itertools;
-use prometheus_exporter::{self, prometheus::register_gauge_vec, prometheus::GaugeVec};
+use prometheus_exporter::{prometheus::register_gauge_vec, prometheus::GaugeVec};
+use prometheus_exporter::{self, prometheus::register_int_gauge_vec, prometheus::IntGaugeVec};
 use std::env;
 use std::net::IpAddr;
 use lazy_static::lazy_static;
@@ -41,18 +42,18 @@ struct PrometheusGauges {
     exporter: prometheus_exporter::Exporter,
 
     // Status_Lan
-    lan_info: GaugeVec,
-    arp_connections: GaugeVec,
-    arp_data_in: GaugeVec,
-    arp_data_out: GaugeVec,
-    arp_data_total: GaugeVec,
+    lan_info: IntGaugeVec,
+    arp_connections: IntGaugeVec,
+    arp_data_in: IntGaugeVec,
+    arp_data_out: IntGaugeVec,
+    arp_data_total: IntGaugeVec,
 
     // Status_Wireless
-    wl_info: GaugeVec,
-    wl_client_signal: GaugeVec,
-    wl_client_noise: GaugeVec,
-    wl_client_snr: GaugeVec,
-    wl_client_uptime: GaugeVec,
+    wl_info: IntGaugeVec,
+    wl_client_signal: IntGaugeVec,
+    wl_client_noise: IntGaugeVec,
+    wl_client_snr: IntGaugeVec,
+    wl_client_uptime: IntGaugeVec,
     wl_client_sig_quality: GaugeVec,
 }
 
@@ -62,11 +63,11 @@ struct ArpInfo {
     hostname: String,
     ip_addr: String,
     mac_addr: String,
-    connections: usize,
+    connections: i64,
     interface: String,
-    data_in: usize,
-    data_out: usize,
-    data_total: usize,
+    data_in: i64,
+    data_out: i64,
+    data_total: i64,
 
 }
 #[derive(Default,Debug)]
@@ -147,7 +148,7 @@ struct WirelessClient {
     mac_addr: String,
     _radio_name: String,
     interface: String,
-    uptime: usize,  // seconds
+    uptime: i64,  // seconds
     _tx_rate: String,
     _rx_rate: String,
     _info: String,
@@ -234,7 +235,7 @@ impl FromStr for StatusWireless {
     }
 }
 
-fn to_sec(time: &str) -> usize {
+fn to_sec(time: &str) -> i64 {
     if let Some(caps) = TIME_FMT.captures(time) {
         let mut time = 0;
 
@@ -311,22 +312,25 @@ fn setup_prometheus_exporter(args: &clap::ArgMatches) -> PrometheusGauges {
     let addr = args.value_of("addr").unwrap().parse::<IpAddr>().unwrap();
     let bind = (addr, port).into();
 
+    let exporter = prometheus_exporter::start(bind).expect("Couldn't bind address");
+    println!("listening on http://{bind}/metrics");
+
     PrometheusGauges {
-        exporter: prometheus_exporter::start(bind).expect("Couldn't bind address"),
+        exporter,
 
         // Status_Lan
-        lan_info:		register_gauge_vec!(format!("{PREFIX}_lan_info"),		"Information about the router",		&["mac", "ipaddr", "gateway", "dns"]).unwrap(),
-        arp_connections:	register_gauge_vec!(format!("{PREFIX}_arp_connections"),	"Connections made to this host",	&["hostname", "ipaddr", "macaddr", "iface"]).unwrap(),
-        arp_data_in:		register_gauge_vec!(format!("{PREFIX}_arp_data_in"),		"Data sent by this host",		&["hostname", "ipaddr", "macaddr", "iface"]).unwrap(),
-        arp_data_out:		register_gauge_vec!(format!("{PREFIX}_arp_data_out"),		"Data sent to this host",		&["hostname", "ipaddr", "macaddr", "iface"]).unwrap(),
-        arp_data_total:		register_gauge_vec!(format!("{PREFIX}_arp_data_total"),		"Total data sent to/from this host",	&["hostname", "ipaddr", "macaddr", "iface"]).unwrap(),
+        lan_info:		register_int_gauge_vec!(format!("{PREFIX}_lan_info"),		"Information about the router",		&["mac", "ipaddr", "gateway", "dns"]).unwrap(),
+        arp_connections:	register_int_gauge_vec!(format!("{PREFIX}_arp_connections"),	"Connections made to this host",	&["hostname", "ipaddr", "mac", "iface"]).unwrap(),
+        arp_data_in:		register_int_gauge_vec!(format!("{PREFIX}_arp_data_in"),	"Data sent by this host",		&["hostname", "ipaddr", "mac", "iface"]).unwrap(),
+        arp_data_out:		register_int_gauge_vec!(format!("{PREFIX}_arp_data_out"),	"Data sent to this host",		&["hostname", "ipaddr", "mac", "iface"]).unwrap(),
+        arp_data_total:		register_int_gauge_vec!(format!("{PREFIX}_arp_data_total"),	"Total data sent to/from this host",	&["hostname", "ipaddr", "mac", "iface"]).unwrap(),
 
         // Status_Wireless
-        wl_info:		register_gauge_vec!(format!("{PREFIX}_wl_info"),		"Information about wireless networks",	&["mac", "ssid"]).unwrap(),
-        wl_client_signal:	register_gauge_vec!(format!("{PREFIX}_wl_client_signal"),	"Wireless device signal",		&["mac", "iface"]).unwrap(),
-        wl_client_noise:	register_gauge_vec!(format!("{PREFIX}_wl_client_noise"),	"Wireless device noise",		&["mac", "iface"]).unwrap(),
-        wl_client_snr:		register_gauge_vec!(format!("{PREFIX}_wl_client_snr"),		"Wireless device signal/noise",		&["mac", "iface"]).unwrap(),
-        wl_client_uptime:	register_gauge_vec!(format!("{PREFIX}_wl_client_uptime"),	"Wireless device time seen",		&["mac", "iface"]).unwrap(),
+        wl_info:		register_int_gauge_vec!(format!("{PREFIX}_wl_info"),		"Information about wireless networks",	&["mac", "ssid"]).unwrap(),
+        wl_client_signal:	register_int_gauge_vec!(format!("{PREFIX}_wl_client_signal"),	"Wireless device signal",		&["mac", "iface"]).unwrap(),
+        wl_client_noise:	register_int_gauge_vec!(format!("{PREFIX}_wl_client_noise"),	"Wireless device noise",		&["mac", "iface"]).unwrap(),
+        wl_client_snr:		register_int_gauge_vec!(format!("{PREFIX}_wl_client_snr"),	"Wireless device signal/noise",		&["mac", "iface"]).unwrap(),
+        wl_client_uptime:	register_int_gauge_vec!(format!("{PREFIX}_wl_client_uptime"),	"Wireless device time seen",		&["mac", "iface"]).unwrap(),
         wl_client_sig_quality:	register_gauge_vec!(format!("{PREFIX}_wl_client_sig_quality"),	"Wireless device signal quality",	&["mac", "iface"]).unwrap(),
     }
 }
@@ -346,38 +350,39 @@ fn process_request(
         .send().unwrap()
         .text().unwrap();
     if let Ok(lan) = lan.parse::<StatusLan>() {
-        match gauges.lan_info.get_metric_with_label_values(
-            &[&lan.lan_mac, &lan.lan_ip, &lan.lan_gateway, &lan.lan_dns]
-        ) {
-            Ok(gague) => gague.set(1_f64),
-            Err(_) => todo!("This shouldn't happen, but add a log here"),
-        }
+        gauges.lan_info.reset();
+        gauges.arp_connections.reset();
+        gauges.arp_data_in.reset();
+        gauges.arp_data_out.reset();
+        gauges.arp_data_total.reset();
+
+        gauges.lan_info
+            .with_label_values(&[&lan.lan_mac, &lan.lan_ip, &lan.lan_gateway, &lan.lan_dns])
+            .set(1);
 
         for host in lan.arp_table {
-            match gauges.arp_connections.get_metric_with_label_values(
-                &[&host.hostname, &host.ip_addr, &host.mac_addr, &host.interface]
-            ) {
-                Ok(gague) => gague.set(host.connections as f64),
-                Err(_) => todo!("This shouldn't happen, but add a log here"),
-            }
-            match gauges.arp_data_in.get_metric_with_label_values(
-                &[&host.hostname, &host.ip_addr, &host.mac_addr, &host.interface]
-            ) {
-                Ok(gague) => gague.set(host.data_in as f64),
-                Err(_) => todo!("This shouldn't happen, but add a log here"),
-            }
-            match gauges.arp_data_out.get_metric_with_label_values(
-                &[&host.hostname, &host.ip_addr, &host.mac_addr, &host.interface]
-            ) {
-                Ok(gague) => gague.set(host.data_out as f64),
-                Err(_) => todo!("This shouldn't happen, but add a log here"),
-            }
-            match gauges.arp_data_total.get_metric_with_label_values(
-                &[&host.hostname, &host.ip_addr, &host.mac_addr, &host.interface]
-            ) {
-                Ok(gague) => gague.set(host.data_total as f64),
-                Err(_) => todo!("This shouldn't happen, but add a log here"),
-            }
+            let info: [&str;4] = [
+                &host.hostname,
+                &host.ip_addr,
+                &host.mac_addr,
+                &host.interface
+            ];
+
+            gauges.arp_connections
+                .with_label_values(&info)
+                .set(host.connections);
+
+            gauges.arp_data_in.
+                with_label_values(&info)
+                .set(host.data_in);
+
+            gauges.arp_data_out
+                .with_label_values(&info)
+                .set(host.data_out);
+
+            gauges.arp_data_total
+                .with_label_values(&info)
+                .set(host.data_total);
         }
     }
     let wl = client
@@ -386,44 +391,38 @@ fn process_request(
         .send().unwrap()
         .text().unwrap();
     if let Ok(wl) = wl.parse::<StatusWireless>() {
-        match gauges.wl_info.get_metric_with_label_values(
-            &[&wl.wl_mac, &wl.wl_ssid]
-        ) {
-            Ok(gague) => gague.set(1_f64),
-            Err(_) => todo!("This shouldn't happen, but add a log here"),
-        }
+        gauges.wl_info.reset();
+        gauges.wl_client_noise.reset();
+        gauges.wl_client_noise.reset();
+        gauges.wl_client_snr.reset();
+        gauges.wl_client_uptime.reset();
+        gauges.wl_client_sig_quality.reset();
+
+        gauges.wl_info
+            .with_label_values(&[&wl.wl_mac, &wl.wl_ssid])
+            .set(1);
 
         for client in wl.active_wireless {
-            match gauges.wl_client_signal.get_metric_with_label_values(
-                &[&client.mac_addr, &client.interface]
-            ) {
-                Ok(gague) => gague.set(client.signal as f64),
-                Err(_) => todo!("This shouldn't happen, but add a log here"),
-            }
-            match gauges.wl_client_noise.get_metric_with_label_values(
-                &[&client.mac_addr, &client.interface]
-            ) {
-                Ok(gague) => gague.set(client.noise as f64),
-                Err(_) => todo!("This shouldn't happen, but add a log here"),
-            }
-            match gauges.wl_client_snr.get_metric_with_label_values(
-                &[&client.mac_addr, &client.interface]
-            ) {
-                Ok(gague) => gague.set(client.snr as f64),
-                Err(_) => todo!("This shouldn't happen, but add a log here"),
-            }
-            match gauges.wl_client_uptime.get_metric_with_label_values(
-                &[&client.mac_addr, &client.interface]
-            ) {
-                Ok(gague) => gague.set(client.uptime as f64),
-                Err(_) => todo!("This shouldn't happen, but add a log here"),
-            }
-            match gauges.wl_client_sig_quality.get_metric_with_label_values(
-                &[&client.mac_addr, &client.interface]
-            ) {
-                Ok(gague) => gague.set((client.signal_quality as f64) / 1000_f64),
-                Err(_) => todo!("This shouldn't happen, but add a log here"),
-            }
+            let info: [&str; 2] = [&client.mac_addr, &client.interface];
+            gauges.wl_client_signal
+                .with_label_values(&info)
+                .set(client.signal);
+
+            gauges.wl_client_noise
+                .with_label_values(&info)
+                .set(client.noise);
+
+            gauges.wl_client_snr
+                .with_label_values(&info)
+                .set(client.snr);
+
+            gauges.wl_client_uptime
+                .with_label_values(&info)
+                .set(client.uptime);
+
+            gauges.wl_client_sig_quality
+                .with_label_values(&info)
+                .set((client.signal_quality as f64) / 1000_f64);
         }
     }
 }
